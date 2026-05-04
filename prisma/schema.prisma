@@ -1,0 +1,161 @@
+datasource db {
+  provider = "postgresql"
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+enum Role {
+  ADMIN
+  SUPPLIER_OWNER
+  SUPPLIER_STAFF
+  BUYER
+}
+
+enum OfferStatus {
+  PENDING
+  ACCEPTED
+  REJECTED
+  COUNTERED
+}
+
+enum OrderStatus {
+  PENDING
+  CONFIRMED
+  SHIPPED
+  COMPLETED
+  CANCELLED
+}
+
+// ----------------------------------------------------------------------
+// IDENTITY & SAAS MODELS
+// ----------------------------------------------------------------------
+
+model User {
+  id        String   @id @default(uuid())
+  email     String   @unique
+  password  String
+  role      Role
+  name      String
+  avatarUrl String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  tenantId  String?
+  tenant    Tenant?  @relation(fields: [tenantId], references: [id])
+
+  buyerChats      ChatRoom[]  @relation("BuyerChats")
+  sentMessages    Message[]
+  sentOffers      Offer[]     @relation("SenderOffers")
+  receivedOffers  Offer[]     @relation("ReceiverOffers")
+  buyerOrders     Order[]     @relation("BuyerOrders")
+}
+
+model Tenant {
+  id             String   @id @default(uuid())
+  businessName   String
+  category       String
+  isVerified     Boolean  @default(false)
+  subscriptionId String?  
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  users          User[]     
+  products       Product[]
+  chatRooms      ChatRoom[]
+  orders         Order[]
+}
+
+// ----------------------------------------------------------------------
+// MARKETPLACE MODELS
+// ----------------------------------------------------------------------
+
+model Product {
+  id          String   @id @default(uuid())
+  tenantId    String   
+  tenant      Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  name        String
+  description String
+  price       Decimal  
+  category    String
+  images      String[]
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  chatRooms   ChatRoom[]
+  orders      Order[]
+}
+
+model ChatRoom {
+  id          String   @id @default(uuid())
+  tenantId    String   
+  tenant      Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  buyerId     String   
+  buyer       User     @relation("BuyerChats", fields: [buyerId], references: [id], onDelete: Cascade)
+  
+  productId   String?
+  product     Product? @relation(fields: [productId], references: [id], onDelete: SetNull)
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  messages    Message[]
+  offers      Offer[]
+  order       Order?   
+}
+
+model Message {
+  id         String   @id @default(uuid())
+  chatRoomId String
+  chatRoom   ChatRoom @relation(fields: [chatRoomId], references: [id], onDelete: Cascade)
+  senderId   String
+  sender     User     @relation(fields: [senderId], references: [id], onDelete: Cascade)
+  content    String
+  isRead     Boolean  @default(false)
+  createdAt  DateTime @default(now())
+}
+
+model Offer {
+  id          String      @id @default(uuid())
+  chatRoomId  String
+  chatRoom    ChatRoom    @relation(fields: [chatRoomId], references: [id], onDelete: Cascade)
+  
+  senderId    String
+  sender      User        @relation("SenderOffers", fields: [senderId], references: [id])
+  receiverId  String
+  receiver    User        @relation("ReceiverOffers", fields: [receiverId], references: [id])
+  
+  price       Decimal
+  quantity    Int
+  status      OfferStatus @default(PENDING)
+  
+  parentOfferId String?   @unique
+  parentOffer   Offer?    @relation("OfferChain", fields: [parentOfferId], references: [id])
+  childOffer    Offer?    @relation("OfferChain")
+
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+}
+
+model Order {
+  id          String      @id @default(uuid())
+  chatRoomId  String      @unique
+  chatRoom    ChatRoom    @relation(fields: [chatRoomId], references: [id])
+  
+  tenantId    String
+  tenant      Tenant      @relation(fields: [tenantId], references: [id])
+  buyerId     String
+  buyer       User        @relation("BuyerOrders", fields: [buyerId], references: [id])
+  
+  productId   String?
+  product     Product?    @relation(fields: [productId], references: [id], onDelete: SetNull)
+  
+  agreedPrice Decimal
+  quantity    Int
+  status      OrderStatus @default(PENDING)
+  
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+}
